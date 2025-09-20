@@ -96,68 +96,6 @@ st.title("🏈 BragginRights DFS League")
 # Manager selection
 username = st.selectbox("Select your manager name", MANAGERS)
 
-# ----------------------------
-# Admin CSV Upload
-# ----------------------------
-if username in ["Mariah"]:  # admins only
-    st.sidebar.subheader("Admin: Upload Weekly CSV")
-    uploaded_file = st.sidebar.file_uploader(
-        "Upload weekly FanDuel CSV (e.g., 2025_week_3.csv)", 
-        type="csv"
-    )
-    if uploaded_file:
-        save_path = os.path.join(SALARIES_FOLDER, uploaded_file.name)
-        with open(save_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        st.sidebar.success(f"Saved {uploaded_file.name}!")
-
-
-# ----------------------------
-# Admin CSV / JSON Upload (only for Mariah)
-# ----------------------------
-if username == "Mariah":
-    st.sidebar.subheader("🏈 Admin Panel")
-    
-    # Instructions
-    st.sidebar.markdown(
-        "📌 **Admin Only:** Upload the updated season leaderboard JSON after the week ends.\n"
-        "Make sure the file matches the manager names in the league."
-    )
-    
-    
-    # File uploader
-    uploaded_file = st.sidebar.file_uploader(
-        "Upload season_leaderboard.json", type="json", key="season_upload"
-    )
-    
-    if uploaded_file:
-        try:
-            uploaded_json = json.load(uploaded_file)
-            
-            # Sanity check for missing managers
-            missing_managers = [m for m in MANAGERS if m not in uploaded_json]
-            if missing_managers:
-                st.sidebar.warning(f"⚠️ Uploaded JSON missing managers: {missing_managers}")
-            else:
-                # Save uploaded JSON to server file
-                with open(SEASON_FILE, "w") as f:
-                    json.dump(uploaded_json, f, indent=2)
-                
-                st.sidebar.success("✅ Season leaderboard updated!")
-                
-                # Show top 3 managers for quick verification
-                top3 = sorted(uploaded_json.items(), key=lambda x: x[1]['total_points'], reverse=True)[:3]
-                st.sidebar.markdown("🏆 **Current Top 3:**")
-                for i, (manager, stats) in enumerate(top3, start=1):
-                    st.sidebar.markdown(f"{i}. {manager} — {stats['total_points']} pts")
-                
-                # Reload in app
-                season = uploaded_json
-        except Exception as e:
-            st.sidebar.error(f"Failed to load JSON: {e}")
-
-
-
 
 # ----------------------------
 # Load latest CSV
@@ -320,15 +258,29 @@ if submitted:
     st.dataframe(pd.DataFrame(weekly_display))
 
 # ----------------------------
-# Season Leaderboard
+# Load Season Leaderboard
 # ----------------------------
-season = load_season()
-st.subheader("📊 Season Leaderboard")
-season_df = pd.DataFrame(season).T
-season_df["Placement Points"] = (
-    season_df["weeks_1st"]*10 +
-    season_df["weeks_2nd"]*6 +
-    season_df["weeks_3rd"]*3
-)
-season_df = season_df.sort_values(by=["Placement Points","total_points"], ascending=False)
-st.dataframe(season_df)
+SEASON_FILE = "season_leaderboard.json"
+
+def load_season():
+    if os.path.exists(SEASON_FILE):
+        with open(SEASON_FILE, "r") as f:
+            season = json.load(f)
+    else:
+        # Create a zeroed-out leaderboard if file missing
+        season = {manager: {"total_points": 0, "weeks_1st": 0, "weeks_2nd": 0, "weeks_3rd": 0}
+                  for manager in MANAGERS if manager != "-"}
+    # Ensure all managers exist
+    for manager in MANAGERS:
+        if manager == "-":
+            continue
+        if manager not in season:
+            season[manager] = {"total_points": 0, "weeks_1st": 0, "weeks_2nd": 0, "weeks_3rd": 0}
+
+    # Ensure all columns exist
+    season_df = pd.DataFrame(season).T
+    for col in ["weeks_1st", "weeks_2nd", "weeks_3rd", "total_points"]:
+        if col not in season_df.columns:
+            season_df[col] = 0
+    return season
+
