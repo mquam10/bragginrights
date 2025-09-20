@@ -1,1 +1,8 @@
-{}
+{
+  "-": {"total_points": 0, "weeks_1st": 0, "weeks_2nd": 0, "weeks_3rd": 0},	
+  "Mariah": {"total_points": 0, "weeks_1st": 0, "weeks_2nd": 0, "weeks_3rd": 0},
+  "David": {"total_points": 0, "weeks_1st": 0, "weeks_2nd": 0, "weeks_3rd": 0},
+  "Amos": {"total_points": 0, "weeks_1st": 0, "weeks_2nd": 0, "weeks_3rd": 0},
+  "AJ": {"total_points": 0, "weeks_1st": 0, "weeks_2nd": 0, "weeks_3rd": 0},
+  "Danny": {"total_points": 0, "weeks_1st": 0, "weeks_2nd": 0, "weeks_3rd": 0}
+}
