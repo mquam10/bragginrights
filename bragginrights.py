@@ -263,13 +263,13 @@ if submitted:
 SEASON_FILE = "season_leaderboard.json"
 
 def load_season():
+    # Try to load from file
     if os.path.exists(SEASON_FILE):
         with open(SEASON_FILE, "r") as f:
             season = json.load(f)
     else:
-        # Create a zeroed-out leaderboard if file missing
-        season = {manager: {"total_points": 0, "weeks_1st": 0, "weeks_2nd": 0, "weeks_3rd": 0}
-                  for manager in MANAGERS if manager != "-"}
+        season = {}
+
     # Ensure all managers exist
     for manager in MANAGERS:
         if manager == "-":
@@ -282,5 +282,17 @@ def load_season():
     for col in ["weeks_1st", "weeks_2nd", "weeks_3rd", "total_points"]:
         if col not in season_df.columns:
             season_df[col] = 0
-    return season
+
+    return season_df
+
+st.subheader("📊 Season Leaderboard")
+season_df = load_season()
+season_df["Placement Points"] = (
+    season_df["weeks_1st"]*10 +
+    season_df["weeks_2nd"]*6 +
+    season_df["weeks_3rd"]*3
+)
+season_df = season_df.sort_values(by=["Placement Points", "total_points"], ascending=False)
+st.dataframe(season_df)
+
 
