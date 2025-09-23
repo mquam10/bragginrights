@@ -256,7 +256,7 @@ else:
 # ----------------------------
 # Weekly Leaderboard
 # ----------------------------
-st.subheader("🏆 Family Weekly Leaderboard")
+st.subheader("🏆 Weekly Leaderboard")
 
 try:
     lineups_df = load_sheet("Lineups")
