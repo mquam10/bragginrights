@@ -33,16 +33,13 @@ SHEET_NAME = "BragginRights"  # Google Sheet name
 # Google Sheets Connection
 # ----------------------------
 def get_gspread_client():
-    scope = ["https://spreadsheets.google.com/feeds",
-             "https://www.googleapis.com/auth/drive"]
-
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    
     if "gcp_service_account" in st.secrets:
         creds_dict = dict(st.secrets["gcp_service_account"])
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    elif os.path.exists("service_account.json"):
-        creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
     else:
-        raise FileNotFoundError("No Google service account credentials found")
+        raise FileNotFoundError("No Google service account credentials found in Streamlit secrets")
 
     return gspread.authorize(creds)
 
