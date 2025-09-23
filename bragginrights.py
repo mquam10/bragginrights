@@ -1,12 +1,13 @@
 
 import streamlit as st
 import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 import os
 import glob
 import json
 import requests
 import re
-from st_gsheets_connection import connect
 
 # ----------------------------
 # Config
@@ -23,15 +24,45 @@ LINEUP_SLOTS = {
 
 MAPPING_FILE = "mappings/fanduel_to_sleeper.json"
 SALARIES_FOLDER = "salaries"
-MANAGERS = ["-", "Mariah", "David", "Amos", "AJ", "Danny"]
+MANAGERS = ["-","Mariah", "David", "Amos", "AJ", "Danny"]
 
-CACHE_FILE = "player_stats_cache.json"
 SEASON_YEAR = 2025  # update dynamically if needed
+SHEET_NAME = "BragginRights"  # Google Sheet name
 
 # ----------------------------
-# Connect to Google Sheets
+# Google Sheets Connection
 # ----------------------------
-conn = connect("gsheets")
+def get_gspread_client():
+    scope = ["https://spreadsheets.google.com/feeds",
+             "https://www.googleapis.com/auth/drive"]
+
+    if "gcp_service_account" in st.secrets:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    elif os.path.exists("service_account.json"):
+        creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
+    else:
+        raise FileNotFoundError("No Google service account credentials found")
+
+    return gspread.authorize(creds)
+
+gc = get_gspread_client()
+
+# ----------------------------
+# Sheet Helpers
+# ----------------------------
+def load_sheet(worksheet):
+    sh = gc.open(SHEET_NAME)
+    ws = sh.worksheet(worksheet)
+    data = ws.get_all_records()
+    return pd.DataFrame(data)
+
+def write_sheet(worksheet, df):
+    sh = gc.open(SHEET_NAME)
+    ws = sh.worksheet(worksheet)
+    ws.clear()
+    if not df.empty:
+        ws.update([df.columns.values.tolist()] + df.values.tolist())
 
 # ----------------------------
 # Load FanDuel -> Sleeper mapping
@@ -40,11 +71,11 @@ if os.path.exists(MAPPING_FILE):
     with open(MAPPING_FILE, "r") as f:
         mapping = json.load(f)
 else:
-    st.error(f"Mapping file not found: {MAPPING_FILE}")
-    st.stop()
+    mapping = {}
+    st.warning(f"Mapping file not found: {MAPPING_FILE}")
 
 # ----------------------------
-# Helper Functions
+# Helpers for CSV + Lineups
 # ----------------------------
 def load_latest_csv():
     csv_files = sorted(glob.glob(os.path.join(SALARIES_FOLDER, "*.csv")))
@@ -65,49 +96,50 @@ def load_csv(file):
     df["fppg"] = df["fppg"].round(2)
     return df
 
-# ----------------------------
-# Save / Load Lineups (Google Sheets)
-# ----------------------------
 def save_lineup(username, lineup_dict, week_key):
-    df = conn.read(worksheet="leaderboard")
-    if df.empty:
-        df = pd.DataFrame(columns=["week", "username", "lineup"])
+    try:
+        df = load_sheet("Lineups")
+    except:
+        df = pd.DataFrame(columns=["week", "manager", "slot", "name", "team", "salary", "fppg"])
 
-    df = df[~((df["week"] == week_key) & (df["username"] == username))]
-    new_row = {"week": week_key, "username": username, "lineup": json.dumps(lineup_dict)}
-    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-    conn.update(worksheet="leaderboard", data=df)
+    # Remove existing lineup for this user/week
+    df = df[~((df["week"] == week_key) & (df["manager"] == username))]
 
-def load_leaderboard():
-    df = conn.read(worksheet="leaderboard")
-    if df.empty:
-        return {}
-    result = {}
-    for _, row in df.iterrows():
-        week = row["week"]
-        if week not in result:
-            result[week] = {}
-        result[week][row["username"]] = json.loads(row["lineup"])
-    return result
+    new_rows = []
+    for slot, player in lineup_dict.items():
+        row = {
+            "week": week_key,
+            "manager": username,
+            "slot": slot,
+            "name": player["name"],
+            "team": player["team"],
+            "salary": player["salary"],
+            "fppg": player["fppg"]
+        }
+        new_rows.append(row)
+
+    df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
+    write_sheet("Lineups", df)
+
+def load_lineup(username, week_key):
+    try:
+        df = load_sheet("Lineups")
+    except:
+        return None
+    lineup_df = df[(df["week"] == week_key) & (df["manager"] == username)]
+    return lineup_df if not lineup_df.empty else None
 
 # ----------------------------
-# Save / Load Season Leaderboard (Google Sheets)
+# Sleeper API Live Points
 # ----------------------------
-def save_season(season_df):
-    conn.update(worksheet="season", data=season_df.reset_index())
-
-def load_season():
-    df = conn.read(worksheet="season")
-    if df.empty:
-        df = pd.DataFrame({
-            "manager": [m for m in MANAGERS if m != "-"],
-            "total_points": 0,
-            "weeks_1st": 0,
-            "weeks_2nd": 0,
-            "weeks_3rd": 0
-        })
-        conn.update(worksheet="season", data=df)
-    return df.set_index("manager")
+def get_player_points(player_id, season, week):
+    url = f"https://api.sleeper.app/v1/stats/nfl/player/{player_id}?season={season}&season_type=regular&week={week}"
+    try:
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        return response.json().get("fantasy_points", 0)
+    except:
+        return 0
 
 # ----------------------------
 # Streamlit App
@@ -118,17 +150,14 @@ st.title("🏈 BragginRights DFS League")
 # Manager selection
 username = st.selectbox("Select your manager name", MANAGERS)
 
-# ----------------------------
 # Load latest CSV
-# ----------------------------
 latest_csv, current_week_key = load_latest_csv()
 if not latest_csv:
     st.error(f"No CSV found in {SALARIES_FOLDER}. Drop the weekly FanDuel CSV there.")
     st.stop()
 
 df = load_csv(latest_csv)
-leaderboard = load_leaderboard()
-submitted = current_week_key in leaderboard and username in leaderboard[current_week_key]
+submitted_lineup = load_lineup(username, current_week_key)
 
 # ----------------------------
 # Sidebar Filters
@@ -137,11 +166,7 @@ st.sidebar.subheader("Filter Players")
 positions = st.sidebar.multiselect("Positions", df["position"].unique())
 teams = st.sidebar.multiselect("Teams", df["team"].unique())
 opponents = st.sidebar.multiselect("Opponent", df["opponent"].unique())
-salary_range = st.sidebar.slider(
-    "Salary Range",
-    int(df["salary"].min()), int(df["salary"].max()),
-    (0, int(df["salary"].max()))
-)
+salary_range = st.sidebar.slider("Salary Range", int(df["salary"].min()), int(df["salary"].max()), (0, int(df["salary"].max())))
 
 filtered_df = df.copy()
 if positions:
@@ -165,11 +190,10 @@ if state_key not in st.session_state:
     st.session_state[state_key] = {}
 
 lineup = st.session_state[state_key]
-submitted_lineup = leaderboard.get(current_week_key, {}).get(username)
-if submitted_lineup:
+
+if submitted_lineup is not None:
     st.info("You have already submitted a lineup. You cannot change it.")
-    lineup_df = pd.DataFrame.from_dict(submitted_lineup, orient="index")
-    st.dataframe(lineup_df)
+    st.dataframe(submitted_lineup)
 else:
     used_players = [p["name"] for p in lineup.values()] if lineup else []
     for pos, count in LINEUP_SLOTS.items():
@@ -177,6 +201,7 @@ else:
             label = f"{pos}{'' if count==1 else i+1}"
             pool = df[df["position"].isin(["RB","WR","TE"])] if pos=="FLEX" else df[df["position"]==pos]
 
+            # Apply filters
             if positions:
                 pool = pool[pool["position"].isin(positions)]
             if teams:
@@ -232,60 +257,34 @@ else:
                 st.experimental_rerun()
 
 # ----------------------------
-# Weekly Leaderboard (live points)
+# Weekly Leaderboard
 # ----------------------------
-week_number = int(current_week_key.split("_week_")[1])
-if "player_cache" not in st.session_state:
-    st.session_state["player_cache"] = {}
+st.subheader("🏆 Family Weekly Leaderboard")
 
-def get_player_points(player_id, season, week):
-    cache_key = f"{player_id}_{season}_{week}"
-    if cache_key in st.session_state["player_cache"]:
-        return st.session_state["player_cache"][cache_key]
+try:
+    lineups_df = load_sheet("Lineups")
+except:
+    lineups_df = pd.DataFrame(columns=["week","manager","slot","name","team","salary","fppg"])
 
-    points = 0
-    if player_id:
-        url = f"https://api.sleeper.app/v1/stats/nfl/player/{player_id}?season={season}&season_type=regular&week={week}"
-        try:
-            response = requests.get(url, timeout=5)
-            response.raise_for_status()
-            points = response.json().get("fantasy_points", 0)
-        except Exception as e:
-            st.warning(f"Failed to fetch points for {player_id}: {e}")
-    st.session_state["player_cache"][cache_key] = points
-    return points
+week_lineups = lineups_df[lineups_df["week"] == current_week_key]
 
-if submitted:
-    st.subheader("🏆 Family Weekly Leaderboard")
-    if st.button("Refresh Points"):
-        st.session_state["player_cache"] = {}
-        st.experimental_rerun()
-
+if not week_lineups.empty:
     weekly_display = {}
-    for manager, lineup_data in leaderboard[current_week_key].items():
+    week_number = int(current_week_key.split("_week_")[1])
+
+    for manager in week_lineups["manager"].unique():
+        manager_df = week_lineups[week_lineups["manager"] == manager]
         manager_scores = {}
         total_points = 0
-        for slot, player in lineup_data.items():
-            player_name = player["name"]
+        for _, row in manager_df.iterrows():
+            player_name = row["name"]
             player_id = mapping.get(player_name)
-            if not player_id:
-                st.warning(f"No Sleeper ID found for {player_name}.")
             points = get_player_points(player_id, SEASON_YEAR, week_number) if player_id else 0
-            manager_scores[slot] = f"{player_name} ({points} pts)"
+            manager_scores[row["slot"]] = f"{player_name} ({points} pts)"
             total_points += points
         manager_scores["Total"] = total_points
         weekly_display[manager] = manager_scores
-    st.dataframe(pd.DataFrame(weekly_display))
 
-# ----------------------------
-# Season Leaderboard
-# ----------------------------
-st.subheader("📊 Season Leaderboard")
-season_df = load_season()
-season_df["Placement Points"] = (
-    season_df["weeks_1st"]*10 +
-    season_df["weeks_2nd"]*6 +
-    season_df["weeks_3rd"]*3
-)
-season_df = season_df.sort_values(by=["Placement Points", "total_points"], ascending=False)
-st.dataframe(season_df)
+    st.dataframe(pd.DataFrame(weekly_display))
+else:
+    st.info("No lineups submitted yet.")
