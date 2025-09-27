@@ -8,6 +8,8 @@ import requests
 import re
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
+
 
 # ----------------------------
 # Config
@@ -33,17 +35,10 @@ CACHE_FILE = "player_stats_cache.json"
 # GSheets connection
 # ----------------------------
 def get_gspread_client():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    # Cloud secret
-    if "gcp_service_account" in st.secrets:
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    # Local JSON fallback
-    elif os.path.exists("service_account.json"):
-        creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
-    else:
-        raise FileNotFoundError("No Google service account credentials found")
+    creds = Credentials.from_service_account_info(dict(st.secrets["gcp_service_account"]))
     return gspread.authorize(creds)
+
+gc = get_gspread_client()
 
 gc = get_gspread_client()
 
