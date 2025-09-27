@@ -73,17 +73,16 @@ def load_csv(file):
 # Sheets read/write helpers
 # ----------------------------
 def load_sheet(worksheet_name):
-    sh = gc.open(SHEET_NAME)
-    ws = sh.worksheet(worksheet_name)
-    data = ws.get_all_records()
+    sh = gc.open("BragginRights")  # always open the workbook
+    worksheet = sh.worksheet(worksheet_name)  # then pick the worksheet
+    data = worksheet.get_all_records()
     return pd.DataFrame(data)
 
 def write_sheet(worksheet_name, df):
-    sh = gc.open(SHEET_NAME)
-    ws = sh.worksheet(worksheet_name)
-    ws.clear()
-    if not df.empty:
-        ws.update([df.columns.values.tolist()] + df.values.tolist())
+    sh = gc.open("BragginRights")  # always open the workbook
+    worksheet = sh.worksheet(worksheet_name)  # then pick the worksheet
+    worksheet.clear()
+    worksheet.update([df.columns.values.tolist()] + df.values.tolist())
 
 # ----------------------------
 # Lineup save/load
