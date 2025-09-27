@@ -47,10 +47,6 @@ def get_gspread_client():
 
 gc = get_gspread_client()
 
-# List all spreadsheets the service account can see
-for ss in gc.openall():
-    print(ss.title)
-
 
 # ----------------------------
 # Load CSV
@@ -90,8 +86,6 @@ def write_sheet(worksheet_name, df):
     sh = gc.open_by_key(SPREADSHEET_ID)
     worksheet = sh.worksheet(worksheet_name)
     worksheet.clear()
-    worksheet.update([df.columns.values.tolist()] + df.values.tolist())
-
     worksheet.update([df.columns.values.tolist()] + df.values.tolist())
 
 # ----------------------------
