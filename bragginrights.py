@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import re
+from google.oauth2.service_account import Credentials
 
 # ----------------------------
 # Config
@@ -36,10 +37,19 @@ else:
 # ----------------------------
 # Connect to Google Sheets
 # ----------------------------
-conn = st.connection("gsheets", type="gspread")
-sh = conn.open("BragginRights")  # Workbook name
+
+# Load credentials from Streamlit secrets
+creds_dict = st.secrets["gcp_service_account"]  # make sure your section in Streamlit is [gcp_service_account]
+creds = Credentials.from_service_account_info(creds_dict, scopes=[
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+])
+
+gc = gspread.authorize(creds)
+sh = gc.open("BragginRights")
 leaderboard_ws = sh.worksheet("leaderboard")
 season_ws = sh.worksheet("season")
+
 
 # ----------------------------
 # Helper functions
