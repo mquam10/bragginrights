@@ -42,6 +42,19 @@ creds = Credentials.from_service_account_info(
 )
 gc = gspread.authorize(creds)
 
+import gspread
+from google.oauth2.service_account import Credentials
+import streamlit as st
+
+# Create credentials from Streamlit secrets
+creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"])
+gc = gspread.authorize(creds)
+
+# Try opening the workbook
+sh = gc.open("BragginRights")
+print(sh.sheet1.get_all_records())  # just to test
+
+
 # Open workbook and sheets
 WORKBOOK_NAME = "BragginRights"
 sh = gc.open(WORKBOOK_NAME)
