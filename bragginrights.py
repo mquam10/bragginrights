@@ -77,16 +77,21 @@ def load_csv(file):
 # ----------------------------
 # Sheets read/write helpers
 # ----------------------------
+
+SPREADSHEET_ID = "1RJJWyh8gexUiN_YOx7TzIleCXNJ47defHcFm_xwrUK0"
+
 def load_sheet(worksheet_name):
-    sh = gc.open("BragginRights")  # always open the workbook
-    worksheet = sh.worksheet(worksheet_name)  # then pick the worksheet
+    sh = gc.open_by_key(SPREADSHEET_ID)
+    worksheet = sh.worksheet(worksheet_name)
     data = worksheet.get_all_records()
     return pd.DataFrame(data)
 
 def write_sheet(worksheet_name, df):
-    sh = gc.open("BragginRights")  # always open the workbook
-    worksheet = sh.worksheet(worksheet_name)  # then pick the worksheet
+    sh = gc.open_by_key(SPREADSHEET_ID)
+    worksheet = sh.worksheet(worksheet_name)
     worksheet.clear()
+    worksheet.update([df.columns.values.tolist()] + df.values.tolist())
+
     worksheet.update([df.columns.values.tolist()] + df.values.tolist())
 
 # ----------------------------
