@@ -47,6 +47,11 @@ def get_gspread_client():
 
 gc = get_gspread_client()
 
+# List all spreadsheets the service account can see
+for ss in gc.openall():
+    print(ss.title)
+
+
 # ----------------------------
 # Load CSV
 # ----------------------------
